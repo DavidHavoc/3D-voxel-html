@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Voxel Sculptor</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body class="bg-black text-white">
+    <div class="flex h-screen">
+        <!-- Control Panel -->
+        <div class="w-64 p-4 bg-gray-900 border-r border-gray-700 overflow-auto">
+            <h1 class="text-xl font-bold mb-4">3D Voxel Sculptor</h1>
+            
+            <div class="mb-4">
+                <label class="block mb-2">Width (1-32)</label>
+                <input type="range" id="width" min="1" max="32" value="5" 
+                       class="w-full" oninput="document.getElementById('widthValue').innerText = this.value">
+                <span id="widthValue" class="text-sm">5</span>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block mb-2">Height (1-32)</label>
+                <input type="range" id="height" min="1" max="32" value="5" 
+                       class="w-full" oninput="document.getElementById('heightValue').innerText = this.value">
+                <span id="heightValue" class="text-sm">5</span>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block mb-2">Depth (1-32)</label>
+                <input type="range" id="depth" min="1" max="32" value="5" 
+                       class="w-full" oninput="document.getElementById('depthValue').innerText = this.value">
+                <span id="depthValue" class="text-sm">5</span>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block mb-2">Shape</label>
+                <select id="shape" class="w-full p-2 bg-gray-800 border border-gray-700 rounded">
+                    <option value="cube">Cube</option>
+                    <option value="sphere">Sphere</option>
+                    <option value="circle">Circle</option>
+                    <option value="cylinder">Cylinder</option>
+                    <option value="cone">Cone</option>
+                    <option value="pyramid">Square Pyramid</option>
+                </select>
+            </div>
+            
+            <button id="generateBtn" class="w-full bg-pink-700 hover:bg-pink-800 text-white py-2 px-4 rounded mb-4">
+                Generate Shape
+            </button>
+            
+            <div class="text-sm mt-6">
+                <p class="mb-2">Controls:</p>
+                <p>• Left-click + drag to rotate</p>
+                <p>• Right-click + drag to pan</p>
+                <p>• Scroll to zoom</p>
+            </div>
+            
+            <div id="stats" class="mt-4 text-xs text-gray-400">
+                <p>Voxels: <span id="voxelCount">0</span></p>
+            </div>
+        </div>
+        
+        <!-- 3D Canvas -->
+        <div class="flex-1 relative">
+            <div id="canvas-container" class="absolute inset-0"></div>
+            
+            <!-- Loading indicator -->
+            <div id="loading" class="hidden absolute inset-0 flex items-center justify-center bg-black bg-opacity-75">
+                <div class="text-center">
+                    <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-pink-700 border-t-transparent"></div>
+                    <p class="mt-2">Generating shape...</p>
+                </div>
+            </div>
+
+            <!-- Error message -->
+            <div id="errorMsg" class="hidden absolute top-4 right-4 bg-red-800 text-white p-4 rounded shadow-lg">
+                Error message here
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let scene, camera, renderer, controls;
+        let voxels = [];
+
+        // Initialize the Three.js scene
+        function init() {
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+            
+            // Create camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(20, 20, 20);
+            camera.lookAt(0, 0, 0);
+            
+            // Create renderer with antialiasing as an option (fallback if not supported)
+            try {
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+            } catch (e) {
+                showError("WebGL initialization failed. Try updating your graphics drivers or using a different browser.");
+                renderer = new THREE.WebGLRenderer({ antialias: false });
+            }
+            
+            renderer.setSize(window.innerWidth - 256, window.innerHeight); // Adjust for sidebar
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            
+            // Add grid helper for reference
+            const gridHelper = new THREE.GridHelper(50, 50, 0x555555, 0x333333);
+            scene.add(gridHelper);
+            
+            // Add orbit controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.1;
+            
+            // Add ambient light
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            
+            // Add directional light
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 20, 10);
+            scene.add(directionalLight);
+            
+            // Create a default cube
+            generateShape();
+            
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize);
+            
+            // Start animation loop
+            animate();
+        }
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        
+        // Handle window resize
+        function onWindowResize() {
+            camera.aspect = (window.innerWidth - 256) / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth - 256, window.innerHeight);
+        }
+        
+        // Generate shape based on input parameters
+        function generateShape() {
+            showLoading(true);
+            
+            // Get input values
+            const width = parseInt(document.getElementById('width').value);
+            const height = parseInt(document.getElementById('height').value);
+            const depth = parseInt(document.getElementById('depth').value);
+            const shapeType = document.getElementById('shape').value;
+            
+            // Clear previous voxels
+            clearVoxels();
+            
+            // For large volumes, use a less detailed approach
+            const totalVoxels = width * height * depth;
+            const isHighDetail = totalVoxels < 15000; // Threshold for detailed generation
+            
+            // Create material with pink color
+            const material = new THREE.MeshLambertMaterial({ color: 0xAC1754 });
+            
+            // Create a reusable geometry for better performance
+            const geometry = new THREE.BoxGeometry(0.95, 0.95, 0.95);
+            
+            // Generate voxels based on shape type
+            let voxelList = [];
+            
+            try {
+                switch(shapeType) {
+                    case 'cube':
+                        voxelList = generateCube(width, height, depth);
+                        break;
+                    case 'sphere':
+                        voxelList = generateSphere(width, height, depth, isHighDetail);
+                        break;
+                    case 'circle':
+                        voxelList = generateCircle(width, height, depth);
+                        break;
+                    case 'cylinder':
+                        voxelList = generateCylinder(width, height, depth, isHighDetail);
+                        break;
+                    case 'cone':
+                        voxelList = generateCone(width, height, depth, isHighDetail);
+                        break;
+                    case 'pyramid':
+                        voxelList = generatePyramid(width, height, depth);
+                        break;
+                }
+            } catch (e) {
+                showError("Error generating shape: " + e.message);
+                showLoading(false);
+                return;
+            }
+            
+            // Use instancing for better performance if available
+            if (voxelList.length > 5000 && window.THREE && THREE.InstancedMesh) {
+                try {
+                    const instancedMesh = new THREE.InstancedMesh(geometry, material, voxelList.length);
+                    const matrix = new THREE.Matrix4();
+                    
+                    for (let i = 0; i < voxelList.length; i++) {
+                        const [x, y, z] = voxelList[i];
+                        matrix.setPosition(
+                            x - width / 2, 
+                            y - height / 2, 
+                            z - depth / 2
+                        );
+                        instancedMesh.setMatrixAt(i, matrix);
+                    }
+                    
+                    scene.add(instancedMesh);
+                    voxels.push(instancedMesh);
+                } catch (e) {
+                    // Fallback to individual meshes if instancing fails
+                    createIndividualVoxels(voxelList, geometry, material, width, height, depth);
+                }
+            } else {
+                createIndividualVoxels(voxelList, geometry, material, width, height, depth);
+            }
+            
+            // Update voxel count
+            document.getElementById('voxelCount').textContent = voxelList.length;
+            
+            showLoading(false);
+        }
+        
+        // Create individual voxel meshes (fallback method)
+        function createIndividualVoxels(voxelList, geometry, material, width, height, depth) {
+            // For very large shapes, use a simpler approach with merged geometry
+            if (voxelList.length > 10000) {
+                try {
+                    const mergedGeometry = new THREE.BufferGeometry();
+                    const positions = [];
+                    
+                    for (const [x, y, z] of voxelList) {
+                        // Add cube positions at this location
+                        const posX = x - width / 2;
+                        const posY = y - height / 2;
+                        const posZ = z - depth / 2;
+                        
+                        // Simple cube positions (just 2 triangles per face)
+                        // Bottom face
+                        positions.push(posX, posY, posZ);
+                        positions.push(posX + 1, posY, posZ);
+                        positions.push(posX + 1, posY, posZ + 1);
+                        
+                        positions.push(posX, posY, posZ);
+                        positions.push(posX + 1, posY, posZ + 1);
+                        positions.push(posX, posY, posZ + 1);
+                        
+                        // Top face
+                        positions.push(posX, posY + 1, posZ);
+                        positions.push(posX + 1, posY + 1, posZ + 1);
+                        positions.push(posX + 1, posY + 1, posZ);
+                        
+                        positions.push(posX, posY + 1, posZ);
+                        positions.push(posX, posY + 1, posZ + 1);
+                        positions.push(posX + 1, posY + 1, posZ + 1);
+                        
+                        // Front face
+                        positions.push(posX, posY, posZ);
+                        positions.push(posX, posY + 1, posZ);
+                        positions.push(posX + 1, posY + 1, posZ);
+                        
+                        positions.push(posX, posY, posZ);
+                        positions.push(posX + 1, posY + 1, posZ);
+                        positions.push(posX + 1, posY, posZ);
+                        
+                        // Back face
+                        positions.push(posX, posY, posZ + 1);
+                        positions.push(posX + 1, posY, posZ + 1);
+                        positions.push(posX + 1, posY + 1, posZ + 1);
+                        
+                        positions.push(posX, posY, posZ + 1);
+                        positions.push(posX + 1, posY + 1, posZ + 1);
+                        positions.push(posX, posY + 1, posZ + 1);
+                        
+                        // Left face
+                        positions.push(posX, posY, posZ);
+                        positions.push(posX, posY, posZ + 1);
+                        positions.push(posX, posY + 1, posZ + 1);
+                        
+                        positions.push(posX, posY, posZ);
+                        positions.push(posX, posY + 1, posZ + 1);
+                        positions.push(posX, posY + 1, posZ);
+                        
+                        // Right face
+                        positions.push(posX + 1, posY, posZ);
+                        positions.push(posX + 1, posY + 1, posZ);
+                        positions.push(posX + 1, posY + 1, posZ + 1);
+                        
+                        positions.push(posX + 1, posY, posZ);
+                        positions.push(posX + 1, posY + 1, posZ + 1);
+                        positions.push(posX + 1, posY, posZ + 1);
+                    }
+                    
+                    // Create position attribute
+                    mergedGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                    mergedGeometry.computeVertexNormals();
+                    
+                    // Create mesh
+                    const mesh = new THREE.Mesh(mergedGeometry, material);
+                    scene.add(mesh);
+                    voxels.push(mesh);
+                    
+                } catch (e) {
+                    // If merged geometry fails, create simplified representation
+                    createSimplifiedRepresentation(voxelList, material, width, height, depth);
+                }
+                
+                return;
+            }
+            
+            // For smaller shapes, create individual voxels
+            const maxVoxelsToRender = 5000; // Limit for smooth performance
+            const step = Math.max(1, Math.ceil(voxelList.length / maxVoxelsToRender));
+            
+            for (let i = 0; i < voxelList.length; i += step) {
+                const [x, y, z] = voxelList[i];
+                const voxel = new THREE.Mesh(geometry, material);
+                voxel.position.set(
+                    x - width / 2, 
+                    y - height / 2, 
+                    z - depth / 2
+                );
+                scene.add(voxel);
+                voxels.push(voxel);
+            }
+        }
+        
+        // Simplified representation for very large models
+        function createSimplifiedRepresentation(voxelList, material, width, height, depth) {
+            // Create a scaled cube that represents approximate volume
+            const size = Math.max(width, height, depth);
+            const scale = voxelList.length / (width * height * depth);
+            
+            const geometry = new THREE.BoxGeometry(width * 0.95, height * 0.95, depth * 0.95);
+            const mesh = new THREE.Mesh(geometry, material);
+            
+            scene.add(mesh);
+            voxels.push(mesh);
+            
+            showError("Shape too complex for detailed rendering. Showing simplified version.");
+        }
+        
+        // Clear all voxels from the scene
+        function clearVoxels() {
+            for (const voxel of voxels) {
+                scene.remove(voxel);
+                if (voxel.geometry) {
+                    voxel.geometry.dispose();
+                }
+                if (voxel.material) {
+                    voxel.material.dispose();
+                }
+            }
+            voxels = [];
+        }
+        
+        // Shape generation functions
+        function generateCube(width, height, depth) {
+            const result = [];
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    for (let z = 0; z < depth; z++) {
+                        result.push([x, y, z]);
+                    }
+                }
+            }
+            return result;
+        }
+        
+        function generateSphere(width, height, depth, highDetail) {
+            const result = [];
+            
+            const centerX = (width - 1) / 2;
+            const centerY = (height - 1) / 2;
+            const centerZ = (depth - 1) / 2;
+            
+            const radiusX = width / 2;
+            const radiusY = height / 2;
+            const radiusZ = depth / 2;
+            
+            const step = highDetail ? 1 : Math.max(1, Math.ceil(Math.min(width, height, depth) / 10));
+            
+            for (let x = 0; x < width; x += step) {
+                for (let y = 0; y < height; y += step) {
+                    for (let z = 0; z < depth; z += step) {
+                        const dx = (x - centerX) / radiusX;
+                        const dy = (y - centerY) / radiusY;
+                        const dz = (z - centerZ) / radiusZ;
+                        
+                        if (dx*dx + dy*dy + dz*dz <= 1.0) {
+                            result.push([x, y, z]);
+                        }
+                    }
+                }
+            }
+            
+            return result;
+        }
+        
+        function generateCircle(width, height, depth) {
+            const result = [];
+            
+            const centerX = (width - 1) / 2;
+            const centerZ = (depth - 1) / 2;
+            
+            const radiusX = width / 2;
+            const radiusZ = depth / 2;
+            
+            for (let x = 0; x < width; x++) {
+                for (let z = 0; z < depth; z++) {
+                    const dx = (x - centerX) / radiusX;
+                    const dz = (z - centerZ) / radiusZ;
+                    
+                    if (dx*dx + dz*dz <= 1.0) {
+                        result.push([x, 0, z]);
+                    }
+                }
+            }
+            
+            return result;
+        }
+        
+        function generateCylinder(width, height, depth, highDetail) {
+            const result = [];
+            
+            const centerX = (width - 1) / 2;
+            const centerZ = (depth - 1) / 2;
+            
+            const radiusX = width / 2;
+            const radiusZ = depth / 2;
+            
+            const step = highDetail ? 1 : Math.max(1, Math.ceil(Math.min(width, depth) / 10));
+            
+            for (let x = 0; x < width; x += step) {
+                for (let y = 0; y < height; y++) {
+                    for (let z = 0; z < depth; z += step) {
+                        const dx = (x - centerX) / radiusX;
+                        const dz = (z - centerZ) / radiusZ;
+                        
+                        if (dx*dx + dz*dz <= 1.0) {
+                            result.push([x, y, z]);
+                        }
+                    }
+                }
+            }
+            
+            return result;
+        }
+        
+        function generateCone(width, height, depth, highDetail) {
+            const result = [];
+            
+            const centerX = (width - 1) / 2;
+            const centerZ = (depth - 1) / 2;
+            
+            const radiusX = width / 2;
+            const radiusZ = depth / 2;
+            
+            const step = highDetail ? 1 : Math.max(1, Math.ceil(Math.min(width, depth) / 10));
+            
+            for (let x = 0; x < width; x += step) {
+                for (let y = 0; y < height; y++) {
+                    for (let z = 0; z < depth; z += step) {
+                        const dx = (x - centerX) / radiusX;
+                        const dz = (z - centerZ) / radiusZ;
+                        
+                        const heightFactor = 1.0 - (y / height);
+                        
+                        if (dx*dx + dz*dz <= heightFactor * heightFactor) {
+                            result.push([x, y, z]);
+                        }
+                    }
+                }
+            }
+            
+            return result;
+        }
+        
+        function generatePyramid(width, height, depth) {
+            const result = [];
+            
+            const centerX = Math.floor(width / 2);
+            const centerZ = Math.floor(depth / 2);
+            
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    for (let z = 0; z < depth; z++) {
+                        const heightFactor = 1.0 - (y / height);
+                        const widthBound = Math.ceil((width * heightFactor) / 2);
+                        const depthBound = Math.ceil((depth * heightFactor) / 2);
+                        
+                        if (x >= centerX - widthBound && x < centerX + widthBound &&
+                            z >= centerZ - depthBound && z < centerZ + depthBound) {
+                            result.push([x, y, z]);
+                        }
+                    }
+                }
+            }
+            
+            return result;
+        }
+        
+        // Helper functions for UI
+        function showLoading(visible) {
+            document.getElementById('loading').style.display = visible ? 'flex' : 'none';
+        }
+        
+        function showError(message) {
+            const errorElement = document.getElementById('errorMsg');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            
+            setTimeout(() => {
+                errorElement.style.display = 'none';
+            }, 5000);
+        }
+        
+        // Initialize on load
+        window.onload = function() {
+            try {
+                init();
+            } catch(e) {
+                showError("Failed to initialize 3D renderer: " + e.message);
+            }
+            
+            // Set up button event
+            document.getElementById('generateBtn').addEventListener('click', function() {
+                try {
+                    generateShape();
+                } catch(e) {
+                    showError("Error generating shape: " + e.message);
+                }
+            });
+        };
+    </script>
+</body>
+</html>
