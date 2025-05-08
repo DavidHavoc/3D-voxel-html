@@ -62,3 +62,7 @@ This is a simple web-based application that allows users to generate and view va
     * `generate[ShapeName]()`: Functions implementing the mathematical logic for each shape type.
     * `showLoading()`, `showError()`: UI helper functions.
     * Initialization code (`window.onload`): Calls `init()` and sets up the button event listener.
+ 
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
