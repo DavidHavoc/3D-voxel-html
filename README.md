@@ -7,7 +7,7 @@ This is a simple web-based application that allows users to generate and view va
 * **Shape Generation:** Generate predefined 3D shapes:
     * Cube
     * Sphere
-    * Circle (flat on the XZ plane)
+    * Circle 
     * Cylinder
     * Cone
     * Square Pyramid
