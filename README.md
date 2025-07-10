@@ -1,6 +1,7 @@
 # 3D Voxel Sculptor
 
 This is a simple web-based application that allows users to generate and view various 3D geometric shapes composed of voxels (3D pixels). It uses the Three.js library for 3D rendering and Tailwind CSS for styling the user interface.
+live demo : https://david.zhorzholiani.com/voxel
 
 ## Features
 
