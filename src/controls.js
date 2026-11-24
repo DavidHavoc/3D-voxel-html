@@ -52,9 +52,17 @@ export class OrbitControls {
         this._onWheel = this._onWheel.bind(this);
         this._onContextMenu = this._onContextMenu.bind(this);
 
+        // Window-level listeners let a drag continue even when the pointer
+        // leaves the canvas. `window` is always present in the browser; the
+        // guard only matters under headless test runners that construct the
+        // controls with a stub canvas and no global `window`.
+        this._view = typeof window !== "undefined" ? window : null;
+
         canvas.addEventListener("pointerdown", this._onPointerDown);
-        window.addEventListener("pointermove", this._onPointerMove);
-        window.addEventListener("pointerup", this._onPointerUp);
+        if (this._view) {
+            this._view.addEventListener("pointermove", this._onPointerMove);
+            this._view.addEventListener("pointerup", this._onPointerUp);
+        }
         canvas.addEventListener("wheel", this._onWheel, { passive: false });
         canvas.addEventListener("contextmenu", this._onContextMenu);
     }
@@ -118,10 +126,12 @@ export class OrbitControls {
         fy /= flen;
         fz /= flen;
 
-        // right = forward x worldUp
-        let rx = fz * 0 - fy * 1;
-        let ry = fx * 1 - fz * 0;
-        let rz = fy * 0 - fx * 0;
+        // Horizontal screen-right axis in the ground plane. For forward
+        // (fx,fy,fz) and world up (0,1,0) this is (fz, 0, -fx), so dragging
+        // horizontally moves the target horizontally regardless of tilt.
+        let rx = fz;
+        let ry = 0;
+        let rz = -fx;
         const rlen = Math.hypot(rx, ry, rz) || 1;
         rx /= rlen;
         ry /= rlen;
@@ -167,11 +177,27 @@ export class OrbitControls {
         ];
     }
 
+    /**
+     * Frame a subject: set the goal target and goal orbit distance so the
+     * current state eases toward them on the next {@link OrbitControls#update}.
+     * This is the public entry point for callers (such as the renderer) that
+     * want to recenter the camera without touching internal goal state.
+     *
+     * @param {number[]} target - New orbit target `[x, y, z]`.
+     * @param {number} distance - New orbit distance (clamped to the allowed range).
+     */
+    frame(target, distance) {
+        this._goalTarget = [target[0], target[1], target[2]];
+        this._goalDistance = Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, distance));
+    }
+
     /** Detach all event listeners added by this instance. */
     dispose() {
         this.canvas.removeEventListener("pointerdown", this._onPointerDown);
-        window.removeEventListener("pointermove", this._onPointerMove);
-        window.removeEventListener("pointerup", this._onPointerUp);
+        if (this._view) {
+            this._view.removeEventListener("pointermove", this._onPointerMove);
+            this._view.removeEventListener("pointerup", this._onPointerUp);
+        }
         this.canvas.removeEventListener("wheel", this._onWheel);
         this.canvas.removeEventListener("contextmenu", this._onContextMenu);
     }

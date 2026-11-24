@@ -84,6 +84,12 @@ This project has **no build step** and **no dependencies to install** (zero runt
 
     This starts a static file server at `http://localhost:8000/` (open `index.html` from there).
 
+    > **Note:** The `serve` script shells out to `python3 -m http.server`, so it
+    > needs Python 3 on your `PATH`. It is a development convenience only, not a
+    > runtime dependency: any static file server works (for example
+    > `npx serve`, `php -S localhost:8000`, or your editor's live-server), and
+    > the app itself still has zero runtime dependencies.
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.

@@ -280,9 +280,7 @@ export class WebGLRenderer {
         // Frame the shape: point the controls at the origin and size the orbit
         // distance to the volume so the whole thing stays visible.
         const span = Math.max(width, height, depth, 1);
-        this.controls.target = [0, 0, 0];
-        this.controls._goalTarget = [0, 0, 0];
-        this.controls._goalDistance = Math.max(span * 2.2, 10);
+        this.controls.frame([0, 0, 0], Math.max(span * 2.2, 10));
     }
 
     /**
