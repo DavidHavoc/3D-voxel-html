@@ -1,0 +1,184 @@
+/*
+ * Local stylesheet for the 3D Voxel Sculptor.
+ * Replaces the former Tailwind v2 CDN link with only the utility styles
+ * the markup actually uses, so the app works fully offline.
+ */
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family:
+        system-ui,
+        -apple-system,
+        "Segoe UI",
+        Roboto,
+        Helvetica,
+        Arial,
+        sans-serif;
+    background-color: #000000;
+    color: #ffffff;
+}
+
+/* Layout: full-height flex row with a fixed 16rem sidebar. */
+.app {
+    display: flex;
+    height: 100vh;
+}
+
+.sidebar {
+    width: 16rem; /* 256px */
+    flex: 0 0 16rem;
+    padding: 1rem;
+    background-color: #111827; /* gray-900 */
+    border-right: 1px solid #374151; /* gray-700 */
+    overflow: auto;
+}
+
+.viewport {
+    position: relative;
+    flex: 1 1 0%;
+    min-width: 0;
+}
+
+/* The canvas host fills the viewport. */
+.canvas-container {
+    position: absolute;
+    inset: 0;
+}
+
+.canvas-container canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* Typography helpers. */
+.title {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    font-weight: 700;
+    margin: 0 0 1rem 0;
+}
+
+.field {
+    margin-bottom: 1rem;
+}
+
+.field-label {
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.value {
+    font-size: 0.875rem;
+}
+
+.hint {
+    font-size: 0.875rem;
+    margin-top: 1.5rem;
+}
+
+.hint p {
+    margin: 0 0 0.5rem 0;
+}
+
+.stats {
+    margin-top: 1rem;
+    font-size: 0.75rem;
+    color: #9ca3af; /* gray-400 */
+}
+
+.stats p {
+    margin: 0;
+}
+
+/* Form controls. */
+.range {
+    width: 100%;
+}
+
+.select {
+    width: 100%;
+    padding: 0.5rem;
+    background-color: #1f2937; /* gray-800 */
+    border: 1px solid #374151; /* gray-700 */
+    border-radius: 0.25rem;
+    color: #ffffff;
+}
+
+/* Pink accent button. */
+.btn-accent {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 1rem;
+    margin-bottom: 1rem;
+    background-color: #be185d; /* pink-700 */
+    color: #ffffff;
+    border: none;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    font: inherit;
+}
+
+.btn-accent:hover {
+    background-color: #9d174d; /* pink-800 */
+}
+
+/* Loading overlay with centered spinner. */
+.overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.75);
+}
+
+.overlay-content {
+    text-align: center;
+}
+
+.overlay-content p {
+    margin-top: 0.5rem;
+}
+
+.spinner {
+    display: inline-block;
+    width: 2rem;
+    height: 2rem;
+    border: 4px solid #be185d; /* pink-700 */
+    border-top-color: transparent;
+    border-radius: 9999px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Error toast. */
+.error-toast {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    padding: 1rem;
+    background-color: #991b1b; /* red-800 */
+    color: #ffffff;
+    border-radius: 0.25rem;
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.4);
+}
+
+/* Utility: hide an element. */
+.hidden {
+    display: none !important;
+}

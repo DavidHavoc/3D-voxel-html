@@ -1,0 +1,6 @@
+# Task-planning state (managed by the agent workflow, not project source).
+.agents/
+
+# Documentation kept in its authored form.
+README.md
+LICENSE
