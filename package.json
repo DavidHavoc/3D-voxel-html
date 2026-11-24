@@ -1,0 +1,14 @@
+{
+    "name": "3d-voxel-sculptor",
+    "version": "1.0.0",
+    "description": "A zero-dependency, offline-capable 3D voxel sculptor rendered with raw WebGL.",
+    "type": "module",
+    "license": "MIT",
+    "scripts": {
+        "lint": "eslint --no-error-on-unmatched-pattern src/ test/",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "test": "node --test",
+        "serve": "python3 -m http.server 8000"
+    }
+}
