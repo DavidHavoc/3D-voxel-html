@@ -14,43 +14,19 @@
 
                 <div class="field">
                     <label class="field-label">Width (1-32)</label>
-                    <input
-                        type="range"
-                        id="width"
-                        min="1"
-                        max="32"
-                        value="5"
-                        class="range"
-                        oninput="document.getElementById('widthValue').innerText = this.value"
-                    />
+                    <input type="range" id="width" min="1" max="32" value="5" class="range" />
                     <span id="widthValue" class="value">5</span>
                 </div>
 
                 <div class="field">
                     <label class="field-label">Height (1-32)</label>
-                    <input
-                        type="range"
-                        id="height"
-                        min="1"
-                        max="32"
-                        value="5"
-                        class="range"
-                        oninput="document.getElementById('heightValue').innerText = this.value"
-                    />
+                    <input type="range" id="height" min="1" max="32" value="5" class="range" />
                     <span id="heightValue" class="value">5</span>
                 </div>
 
                 <div class="field">
                     <label class="field-label">Depth (1-32)</label>
-                    <input
-                        type="range"
-                        id="depth"
-                        min="1"
-                        max="32"
-                        value="5"
-                        class="range"
-                        oninput="document.getElementById('depthValue').innerText = this.value"
-                    />
+                    <input type="range" id="depth" min="1" max="32" value="5" class="range" />
                     <span id="depthValue" class="value">5</span>
                 </div>
 
@@ -98,9 +74,11 @@
         </div>
 
         <!--
-        Application logic is loaded as an ES module in FEAT-002:
-        the pure voxel generators (src/voxel-generators.js), the
-        self-contained raw-WebGL renderer (src/renderer.js), and the
-        DOM wiring (src/app.js). No external scripts or CDNs are used.
-    --></body>
+            Application logic is loaded as an ES module: the pure voxel
+            generators (src/voxel-generators.js), the self-contained raw-WebGL
+            renderer (src/renderer.js), and the DOM wiring (src/app.js). No
+            external scripts or CDNs are used.
+        -->
+        <script type="module" src="src/app.js"></script>
+    </body>
 </html>
