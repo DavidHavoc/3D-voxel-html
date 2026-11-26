@@ -1,84 +1,18 @@
 /**
  * Self-contained raw-WebGL renderer for the 3D Voxel Sculptor.
  *
- * This replaces the former Three.js renderer entirely. It has no external
- * dependency: it obtains a WebGL2 (or WebGL1) context, compiles a single
- * shader program with ambient + directional Lambert lighting (approximating
- * the old `MeshLambertMaterial` look in accent color `0xAC1754`), and draws
- * an entire voxel shape from one merged position/normal vertex buffer in a
- * single draw call. A reference grid is drawn with a second small program.
- *
- * Lifecycle: construct once with a container element, call
- * {@link WebGLRenderer#setVoxels} whenever the shape changes,
- * {@link WebGLRenderer#resize} on layout changes, {@link WebGLRenderer#render}
- * each frame, and {@link WebGLRenderer#dispose} to release every GL resource.
+ * Draws exposed voxel faces and a reference grid when the model, camera,
+ * or viewport changes.
  */
 
-import { mat4Perspective, mat4LookAt, mat4Multiply, vec3Normalize } from "./math.js";
+import { mat4Perspective, mat4LookAt, perspectiveFitDistance, vec3Normalize } from "./math.js";
 import { OrbitControls } from "./controls.js";
+import { buildVoxelMesh } from "./voxel-mesh.js";
 
-const ACCENT = [0xac / 255, 0x17 / 255, 0x54 / 255];
-
-// Unit-cube geometry: 6 faces, each a quad (2 triangles), with per-face
-// normals so lighting reads as flat-shaded cube faces. Positions are offsets
-// in [0, 1] from a voxel's lower corner.
-const CUBE_FACES = [
-    // normal, then 4 corners (CCW) of the face
-    {
-        n: [0, 0, 1],
-        v: [
-            [0, 0, 1],
-            [1, 0, 1],
-            [1, 1, 1],
-            [0, 1, 1],
-        ],
-    }, // front (+z)
-    {
-        n: [0, 0, -1],
-        v: [
-            [1, 0, 0],
-            [0, 0, 0],
-            [0, 1, 0],
-            [1, 1, 0],
-        ],
-    }, // back (-z)
-    {
-        n: [0, 1, 0],
-        v: [
-            [0, 1, 1],
-            [1, 1, 1],
-            [1, 1, 0],
-            [0, 1, 0],
-        ],
-    }, // top (+y)
-    {
-        n: [0, -1, 0],
-        v: [
-            [0, 0, 0],
-            [1, 0, 0],
-            [1, 0, 1],
-            [0, 0, 1],
-        ],
-    }, // bottom (-y)
-    {
-        n: [1, 0, 0],
-        v: [
-            [1, 0, 1],
-            [1, 0, 0],
-            [1, 1, 0],
-            [1, 1, 1],
-        ],
-    }, // right (+x)
-    {
-        n: [-1, 0, 0],
-        v: [
-            [0, 0, 0],
-            [0, 0, 1],
-            [0, 1, 1],
-            [0, 1, 0],
-        ],
-    }, // left (-x)
-];
+const ACCENT = [0.46, 0.86, 0.7];
+const LIGHT_DIRECTION = vec3Normalize([10, 20, 10]);
+const FOV = (52 * Math.PI) / 180;
+const GRID_Y = -0.025;
 
 const VOXEL_VERTEX_SRC = `
 precision highp float;
@@ -86,9 +20,12 @@ attribute vec3 aPosition;
 attribute vec3 aNormal;
 uniform mat4 uModelView;
 uniform mat4 uProjection;
+uniform vec3 uVoxelOffset;
 varying vec3 vNormal;
+varying vec3 vGridPosition;
 void main() {
     vNormal = aNormal;
+    vGridPosition = aPosition + uVoxelOffset;
     gl_Position = uProjection * uModelView * vec4(aPosition, 1.0);
 }
 `;
@@ -96,6 +33,7 @@ void main() {
 const VOXEL_FRAGMENT_SRC = `
 precision highp float;
 varying vec3 vNormal;
+varying vec3 vGridPosition;
 uniform vec3 uColor;
 uniform vec3 uLightDir;
 uniform float uAmbient;
@@ -103,7 +41,9 @@ void main() {
     vec3 n = normalize(vNormal);
     float diffuse = max(dot(n, normalize(uLightDir)), 0.0);
     float light = uAmbient + (1.0 - uAmbient) * diffuse;
-    gl_FragColor = vec4(uColor * light, 1.0);
+    vec3 edge = abs(fract(vGridPosition) - 0.5) * (1.0 - abs(n));
+    float seam = smoothstep(0.43, 0.495, max(edge.x, max(edge.y, edge.z)));
+    gl_FragColor = vec4(uColor * light * mix(1.0, 0.67, seam), 1.0);
 }
 `;
 
@@ -145,6 +85,11 @@ export class WebGLRenderer {
             throw new Error("WebGL is not supported by this browser.");
         }
         this.gl = gl;
+        this.canvas.tabIndex = 0;
+        this.canvas.setAttribute(
+            "aria-label",
+            "3D model. Use arrow keys to orbit, Shift and arrow keys to pan, and plus or minus to zoom."
+        );
 
         this.voxelProgram = this._createProgram(VOXEL_VERTEX_SRC, VOXEL_FRAGMENT_SRC);
         this.gridProgram = this._createProgram(GRID_VERTEX_SRC, GRID_FRAGMENT_SRC);
@@ -156,11 +101,12 @@ export class WebGLRenderer {
         this.gridVertexCount = 0;
         this._buildGrid(50, 50);
 
-        this.projection = null;
-        this.controls = new OrbitControls(this.canvas);
+        this.frameId = null;
+        this.dimensions = null;
+        this.controls = new OrbitControls(this.canvas, { onChange: () => this.requestRender() });
 
         gl.enable(gl.DEPTH_TEST);
-        gl.clearColor(0, 0, 0, 1);
+        gl.clearColor(0.055, 0.078, 0.09, 1);
 
         this.resize(container.clientWidth, container.clientHeight, window.devicePixelRatio || 1);
     }
@@ -222,8 +168,8 @@ export class WebGLRenderer {
         const lines = [];
         for (let i = 0; i <= divisions; i++) {
             const p = -half + i * stepSize;
-            lines.push(-half, 0, p, half, 0, p);
-            lines.push(p, 0, -half, p, 0, half);
+            lines.push(-half, GRID_Y, p, half, GRID_Y, p);
+            lines.push(p, GRID_Y, -half, p, GRID_Y, half);
         }
         this.gridVertexCount = lines.length / 3;
         gl.bindBuffer(gl.ARRAY_BUFFER, this.gridBuffer);
@@ -233,54 +179,35 @@ export class WebGLRenderer {
     /**
      * Replace the rendered shape with a new voxel list. The voxels are merged
      * into one interleaved position/normal buffer so the whole shape draws in
-     * a single call. Voxels are centered on the origin using the volume size.
+     * a single call. Voxels sit on the ground and are centered horizontally.
      *
      * @param {Array<[number, number, number]>} list - Voxel coordinates.
      * @param {number} width - Volume width (for centering).
-     * @param {number} height - Volume height (for centering).
+     * @param {number} height - Volume height.
      * @param {number} depth - Volume depth (for centering).
      */
     setVoxels(list, width, height, depth) {
         const gl = this.gl;
-        const gap = 0.025; // leaves a 0.95 cube like the original BoxGeometry
-        const data = new Float32Array(list.length * CUBE_FACES.length * 6 * 6);
-        let o = 0;
-
-        const offX = width / 2;
-        const offY = height / 2;
-        const offZ = depth / 2;
-
-        for (let i = 0; i < list.length; i++) {
-            const bx = list[i][0] - offX + gap;
-            const by = list[i][1] - offY + gap;
-            const bz = list[i][2] - offZ + gap;
-
-            for (let f = 0; f < CUBE_FACES.length; f++) {
-                const face = CUBE_FACES[f];
-                const n = face.n;
-                const c = face.v;
-                // Two triangles: 0,1,2 and 0,2,3.
-                const order = [0, 1, 2, 0, 2, 3];
-                for (let k = 0; k < order.length; k++) {
-                    const corner = c[order[k]];
-                    data[o++] = bx + corner[0] * (1 - gap * 2);
-                    data[o++] = by + corner[1] * (1 - gap * 2);
-                    data[o++] = bz + corner[2] * (1 - gap * 2);
-                    data[o++] = n[0];
-                    data[o++] = n[1];
-                    data[o++] = n[2];
-                }
-            }
-        }
-
-        this.vertexCount = list.length * CUBE_FACES.length * 6;
+        const data = buildVoxelMesh(list, width, height, depth);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.voxelBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+        this.vertexCount = data.length / 6;
+        this.dimensions = [width, height, depth];
+        this.fitView(true);
+    }
 
-        // Frame the shape: point the controls at the origin and size the orbit
-        // distance to the volume so the whole thing stays visible.
-        const span = Math.max(width, height, depth, 1);
-        this.controls.frame([0, 0, 0], Math.max(span * 2.2, 10));
+    /** Fit the current model while retaining the viewing angle. */
+    fitView(immediate = false) {
+        if (!this.dimensions) {
+            return;
+        }
+        const radius = Math.hypot(...this.dimensions) / 2;
+        const distance = perspectiveFitDistance(radius, FOV, this.aspect);
+        this.controls.frame([0, this.dimensions[1] / 2, 0], distance * 1.12, immediate);
+    }
+
+    zoom(factor) {
+        this.controls.zoom(factor);
     }
 
     /**
@@ -296,14 +223,27 @@ export class WebGLRenderer {
         this.canvas.width = w;
         this.canvas.height = h;
         gl.viewport(0, 0, w, h);
-        const aspect = cssWidth / Math.max(1, cssHeight);
-        this.projection = mat4Perspective((75 * Math.PI) / 180, aspect, 0.1, 1000);
+        this.aspect = w / h;
+        this.projection = mat4Perspective(FOV, this.aspect, 0.1, 1000);
+        this.requestRender();
+    }
+
+    requestRender() {
+        if (this.frameId !== null) {
+            return;
+        }
+        this.frameId = requestAnimationFrame(() => {
+            this.frameId = null;
+            if (this.render()) {
+                this.requestRender();
+            }
+        });
     }
 
     /** Render one frame using the current controls and voxel buffer. */
     render() {
         const gl = this.gl;
-        this.controls.update();
+        const moving = this.controls.update();
         const eye = this.controls.getEye();
         const view = mat4LookAt(eye, this.controls.target, [0, 1, 0]);
 
@@ -312,7 +252,7 @@ export class WebGLRenderer {
         // Reference grid.
         gl.useProgram(this.gridProgram);
         this._setMatrix(this.gridProgram, view);
-        gl.uniform3f(gl.getUniformLocation(this.gridProgram, "uColor"), 0.33, 0.33, 0.33);
+        gl.uniform3f(gl.getUniformLocation(this.gridProgram, "uColor"), 0.19, 0.25, 0.25);
         const gridPos = gl.getAttribLocation(this.gridProgram, "aPosition");
         gl.bindBuffer(gl.ARRAY_BUFFER, this.gridBuffer);
         gl.enableVertexAttribArray(gridPos);
@@ -329,12 +269,12 @@ export class WebGLRenderer {
                 ACCENT[1],
                 ACCENT[2]
             );
-            const lightDir = vec3Normalize([10, 20, 10]);
+            gl.uniform3f(gl.getUniformLocation(this.voxelProgram, "uLightDir"), ...LIGHT_DIRECTION);
             gl.uniform3f(
-                gl.getUniformLocation(this.voxelProgram, "uLightDir"),
-                lightDir[0],
-                lightDir[1],
-                lightDir[2]
+                gl.getUniformLocation(this.voxelProgram, "uVoxelOffset"),
+                this.dimensions[0] / 2,
+                0,
+                this.dimensions[2] / 2
             );
             gl.uniform1f(gl.getUniformLocation(this.voxelProgram, "uAmbient"), 0.5);
 
@@ -347,7 +287,9 @@ export class WebGLRenderer {
             gl.enableVertexAttribArray(normLoc);
             gl.vertexAttribPointer(normLoc, 3, gl.FLOAT, false, stride, 3 * 4);
             gl.drawArrays(gl.TRIANGLES, 0, this.vertexCount);
+            gl.disableVertexAttribArray(normLoc);
         }
+        return moving;
     }
 
     /**
@@ -357,27 +299,17 @@ export class WebGLRenderer {
      */
     _setMatrix(program, view) {
         const gl = this.gl;
-        const mv = mat4Multiply(view, this._identity());
-        gl.uniformMatrix4fv(gl.getUniformLocation(program, "uModelView"), false, mv);
+        gl.uniformMatrix4fv(gl.getUniformLocation(program, "uModelView"), false, view);
         gl.uniformMatrix4fv(gl.getUniformLocation(program, "uProjection"), false, this.projection);
-    }
-
-    /**
-     * Identity model matrix (voxels are pre-transformed into world space).
-     * @returns {Float32Array} A column-major identity matrix.
-     */
-    _identity() {
-        const m = new Float32Array(16);
-        m[0] = 1;
-        m[5] = 1;
-        m[10] = 1;
-        m[15] = 1;
-        return m;
     }
 
     /** Release every GL resource and detach control listeners. */
     dispose() {
         const gl = this.gl;
+        if (this.frameId !== null) {
+            cancelAnimationFrame(this.frameId);
+            this.frameId = null;
+        }
         if (this.controls) {
             this.controls.dispose();
             this.controls = null;

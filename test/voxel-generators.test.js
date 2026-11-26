@@ -160,12 +160,48 @@ test("generateCone tapers from a full base to a single apex", () => {
     }
 });
 
+test("shape generation defaults to full detail for large volumes", () => {
+    const counts = { sphere: 10260, cylinder: 15340, cone: 5402 };
+    for (const [shape, count] of Object.entries(counts)) {
+        assert.equal(generateVoxels(shape, 25, 26, 30).length, count, shape);
+    }
+});
+
+test("the 25 × 26 × 30 cone stays symmetric throughout the full-height taper", () => {
+    const cone = generateVoxels("cone", 25, 26, 30);
+    const coordinates = new Set(cone.map(String));
+    for (const [x, y, z] of cone) {
+        assert.ok(coordinates.has(String([24 - x, y, z])));
+        assert.ok(coordinates.has(String([x, y, 29 - z])));
+    }
+    assert.equal(layerCount(cone, 0), 590);
+    assert.deepEqual(
+        cone.filter((voxel) => voxel[1] === 25),
+        [
+            [12, 25, 14],
+            [12, 25, 15],
+        ]
+    );
+});
+
+test("a narrow cone reaches the requested height with a centered tip", () => {
+    const cone = generateCone(4, 32, 4, true);
+    assert.deepEqual(
+        cone.filter((voxel) => voxel[1] === 31),
+        [
+            [1, 31, 1],
+            [1, 31, 2],
+            [2, 31, 1],
+            [2, 31, 2],
+        ]
+    );
+});
+
 test("generatePyramid tapers from a wide base to a narrow apex", () => {
     const size = 9;
     const pyramid = generatePyramid(size, size, size);
 
     assert.ok(pyramid.length <= size * size * size);
-    assert.equal(pyramid.length, 349);
     assertInBounds(pyramid, size, size, size);
 
     const base = layerCount(pyramid, 0);
@@ -175,14 +211,31 @@ test("generatePyramid tapers from a wide base to a narrow apex", () => {
     assert.equal(base, 81);
     assert.ok(apex < base);
 
-    // The apex sits around the center column of the volume.
-    const center = Math.floor(size / 2);
-    assert.ok(has(pyramid, center, size - 1, center));
+    assert.deepEqual(
+        pyramid.filter((voxel) => voxel[1] === size - 1),
+        [[4, 8, 4]]
+    );
+    for (const [x, y, z] of pyramid) {
+        assert.ok(has(pyramid, size - 1 - x, y, z));
+        assert.ok(has(pyramid, x, y, size - 1 - z));
+    }
 
     // Monotonic narrowing with height.
     for (let y = 1; y < size; y++) {
         assert.ok(layerCount(pyramid, y) <= layerCount(pyramid, y - 1));
     }
+});
+
+test("a pyramid with mixed parity has a centered rectangular base and tip", () => {
+    const pyramid = generatePyramid(4, 32, 3);
+    assert.equal(layerCount(pyramid, 0), 12);
+    assert.deepEqual(
+        pyramid.filter((voxel) => voxel[1] === 31),
+        [
+            [1, 31, 1],
+            [2, 31, 1],
+        ]
+    );
 });
 
 test("generateVoxels dispatches to the matching generator", () => {

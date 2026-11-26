@@ -26,14 +26,20 @@ function near(actual, expected, msg) {
 function fakeCanvas() {
     return {
         listeners: [],
-        addEventListener(type) {
+        handlers: new Map(),
+        addEventListener(type, handler) {
             this.listeners.push(type);
+            this.handlers.set(type, handler);
         },
         removeEventListener(type) {
             const i = this.listeners.indexOf(type);
             if (i >= 0) {
                 this.listeners.splice(i, 1);
             }
+            this.handlers.delete(type);
+        },
+        emit(type, event) {
+            this.handlers.get(type)?.(event);
         },
     };
 }
@@ -111,6 +117,44 @@ test("frame sets the goal target and clamps the goal distance", () => {
     near(controls._goalDistance, 2, "goal distance clamped to min");
 
     controls.dispose();
+});
+
+test("immediate framing shows the new model at its fitted distance on the first frame", () => {
+    const controls = new OrbitControls(fakeCanvas());
+    controls.frame([0, 13, 0], 60, true);
+    assert.deepEqual(controls.target, [0, 13, 0]);
+    assert.equal(controls.distance, 60);
+    assert.equal(controls.update(), false);
+});
+
+test("camera updates signal when the damped animation has settled", () => {
+    const controls = new OrbitControls(fakeCanvas());
+    controls.frame([1, 2, 3], 20);
+    assert.equal(controls.update(), true);
+    for (let i = 0; i < 300; i++) {
+        controls.update();
+    }
+    assert.equal(controls.update(), false);
+    assert.deepEqual(controls.target, [1, 2, 3]);
+    assert.equal(controls.distance, 20);
+});
+
+test("keyboard navigation wakes the camera and moves it in screen space", () => {
+    const canvas = fakeCanvas();
+    let changed = false;
+    const controls = new OrbitControls(canvas, {
+        azimuth: 0,
+        polar: Math.PI / 2,
+        onChange: () => {
+            changed = true;
+        },
+    });
+    canvas.emit("keydown", { key: "ArrowRight", shiftKey: true, preventDefault() {} });
+    controls.update();
+    assert.equal(changed, true);
+    assert.ok(controls.target[0] < 0, "panning right moves the model to screen right");
+    near(controls.target[1], 0);
+    near(controls.target[2], 0);
 });
 
 test("dispose detaches the canvas listeners it added", () => {

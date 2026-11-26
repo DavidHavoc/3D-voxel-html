@@ -41,6 +41,13 @@ export function mat4Perspective(fovY, aspect, near, far) {
     return out;
 }
 
+/** Distance that keeps a sphere inside both the horizontal and vertical field of view. */
+export function perspectiveFitDistance(radius, fovY, aspect) {
+    const halfFov = fovY / 2;
+    const halfFovX = Math.atan(Math.tan(halfFov) * aspect);
+    return radius / Math.sin(Math.min(halfFov, halfFovX));
+}
+
 /**
  * Build a right-handed look-at view matrix.
  *

@@ -5,9 +5,6 @@
  * dependency so it can be unit tested directly under Node's built-in test
  * runner. Every generator returns an array of `[x, y, z]` integer
  * coordinates describing which unit cells are filled for a given shape.
- *
- * The math is preserved verbatim from the original inline implementation so
- * that behavior stays identical after the refactor.
  */
 
 /**
@@ -39,7 +36,7 @@ export function generateCube(width, height, depth) {
  * @param {boolean} [highDetail] - When false, large volumes are subsampled.
  * @returns {Array<[number, number, number]>} Filled voxel coordinates.
  */
-export function generateSphere(width, height, depth, highDetail) {
+export function generateSphere(width, height, depth, highDetail = true) {
     const result = [];
 
     const centerX = (width - 1) / 2;
@@ -109,7 +106,7 @@ export function generateCircle(width, height, depth) {
  * @param {boolean} [highDetail] - When false, large volumes are subsampled.
  * @returns {Array<[number, number, number]>} Filled voxel coordinates.
  */
-export function generateCylinder(width, height, depth, highDetail) {
+export function generateCylinder(width, height, depth, highDetail = true) {
     const result = [];
 
     const centerX = (width - 1) / 2;
@@ -145,7 +142,7 @@ export function generateCylinder(width, height, depth, highDetail) {
  * @param {boolean} [highDetail] - When false, large volumes are subsampled.
  * @returns {Array<[number, number, number]>} Filled voxel coordinates.
  */
-export function generateCone(width, height, depth, highDetail) {
+export function generateCone(width, height, depth, highDetail = true) {
     const result = [];
 
     const centerX = (width - 1) / 2;
@@ -155,16 +152,20 @@ export function generateCone(width, height, depth, highDetail) {
     const radiusZ = depth / 2;
 
     const step = highDetail ? 1 : Math.max(1, Math.ceil(Math.min(width, depth) / 10));
+    // An even-sized axis has its center between cells. Keep all equally close
+    // cells when the last layers get too narrow to contain a voxel center.
+    const nearestX = (centerX - Math.floor(centerX)) / radiusX;
+    const nearestZ = (centerZ - Math.floor(centerZ)) / radiusZ;
+    const minRadiusSquared = nearestX * nearestX + nearestZ * nearestZ;
 
     for (let x = 0; x < width; x += step) {
+        const dx = (x - centerX) / radiusX;
         for (let y = 0; y < height; y++) {
+            const taper = (height - y) / height;
+            const threshold = Math.max(taper * taper, minRadiusSquared);
             for (let z = 0; z < depth; z += step) {
-                const dx = (x - centerX) / radiusX;
                 const dz = (z - centerZ) / radiusZ;
-
-                const heightFactor = 1.0 - y / height;
-
-                if (dx * dx + dz * dz <= heightFactor * heightFactor) {
+                if (dx * dx + dz * dz <= threshold) {
                     result.push([x, y, z]);
                 }
             }
@@ -175,7 +176,7 @@ export function generateCone(width, height, depth, highDetail) {
 }
 
 /**
- * Generate a solid square pyramid that tapers to a point at the top.
+ * Generate a solid pyramid with a rectangular base and a centered tip.
  *
  * @param {number} width - Volume width (number of cells along x).
  * @param {number} height - Volume height (number of cells along y).
@@ -185,22 +186,21 @@ export function generateCone(width, height, depth, highDetail) {
 export function generatePyramid(width, height, depth) {
     const result = [];
 
-    const centerX = Math.floor(width / 2);
-    const centerZ = Math.floor(depth / 2);
+    const centerX = (width - 1) / 2;
+    const centerZ = (depth - 1) / 2;
+    const minBoundX = centerX - Math.floor(centerX);
+    const minBoundZ = centerZ - Math.floor(centerZ);
 
     for (let x = 0; x < width; x++) {
+        const dx = Math.abs(x - centerX);
         for (let y = 0; y < height; y++) {
+            const taper = (height - y) / (2 * height);
+            if (dx > Math.max(width * taper, minBoundX)) {
+                continue;
+            }
+            const depthBound = Math.max(depth * taper, minBoundZ);
             for (let z = 0; z < depth; z++) {
-                const heightFactor = 1.0 - y / height;
-                const widthBound = Math.ceil((width * heightFactor) / 2);
-                const depthBound = Math.ceil((depth * heightFactor) / 2);
-
-                if (
-                    x >= centerX - widthBound &&
-                    x < centerX + widthBound &&
-                    z >= centerZ - depthBound &&
-                    z < centerZ + depthBound
-                ) {
+                if (Math.abs(z - centerZ) <= depthBound) {
                     result.push([x, y, z]);
                 }
             }
@@ -218,8 +218,8 @@ export function generatePyramid(width, height, depth) {
  * @param {number} width - Volume width (number of cells along x).
  * @param {number} height - Volume height (number of cells along y).
  * @param {number} depth - Volume depth (number of cells along z).
- * @param {boolean} [highDetail] - Detail flag forwarded to generators that
- *   subsample large volumes (sphere, cylinder, cone).
+ * @param {boolean} [highDetail] - Explicitly pass false to subsample large
+ *   spheres, cylinders, and cones. Defaults to full detail.
  * @returns {Array<[number, number, number]>} Filled voxel coordinates.
  */
 export function generateVoxels(shapeType, width, height, depth, highDetail) {

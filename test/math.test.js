@@ -15,6 +15,7 @@ import {
     mat4Perspective,
     mat4LookAt,
     mat4Multiply,
+    perspectiveFitDistance,
     vec3Normalize,
 } from "../src/math.js";
 
@@ -52,6 +53,12 @@ test("mat4Perspective produces known entries for a sample frustum", () => {
             near(m[i], 0, `m[${i}] should be zero`);
         }
     }
+});
+
+test("perspective framing uses the narrower field of view on portrait screens", () => {
+    const radius = 10;
+    near(perspectiveFitDistance(radius, Math.PI / 2, 2), Math.sqrt(200));
+    near(perspectiveFitDistance(radius, Math.PI / 2, 0.5), Math.sqrt(500));
 });
 
 test("mat4Multiply by identity returns the original matrix", () => {

@@ -3,82 +3,122 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="theme-color" content="#151d20" />
         <title>3D Voxel Sculptor</title>
+        <link rel="icon" type="image/png" href="favicon.png" />
+        <link rel="apple-touch-icon" href="favicon.png" />
         <link rel="stylesheet" href="styles.css" />
     </head>
     <body>
-        <div class="app">
-            <!-- Control Panel -->
-            <div class="sidebar">
-                <h1 class="title">3D Voxel Sculptor</h1>
+        <header class="app-header">
+            <span class="app-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <h1>3D Voxel Sculptor</h1>
+        </header>
 
-                <div class="field">
-                    <label class="field-label">Width (1-32)</label>
-                    <input type="range" id="width" min="1" max="32" value="5" class="range" />
-                    <span id="widthValue" class="value">5</span>
-                </div>
-
-                <div class="field">
-                    <label class="field-label">Height (1-32)</label>
-                    <input type="range" id="height" min="1" max="32" value="5" class="range" />
-                    <span id="heightValue" class="value">5</span>
-                </div>
-
-                <div class="field">
-                    <label class="field-label">Depth (1-32)</label>
-                    <input type="range" id="depth" min="1" max="32" value="5" class="range" />
-                    <span id="depthValue" class="value">5</span>
-                </div>
-
-                <div class="field">
-                    <label class="field-label">Shape</label>
-                    <select id="shape" class="select">
+        <main class="workspace">
+            <form id="model-form" class="sidebar" aria-label="Model controls">
+                <div class="shape-field">
+                    <label for="shape">Shape</label>
+                    <select id="shape">
                         <option value="cube">Cube</option>
                         <option value="sphere">Sphere</option>
                         <option value="circle">Circle</option>
                         <option value="cylinder">Cylinder</option>
                         <option value="cone">Cone</option>
-                        <option value="pyramid">Square Pyramid</option>
+                        <option value="pyramid">Pyramid</option>
                     </select>
                 </div>
 
-                <button id="generateBtn" class="btn-accent">Generate Shape</button>
+                <fieldset class="dimensions">
+                    <legend>Dimensions <span>1–32 voxels</span></legend>
 
-                <div class="hint">
-                    <p>Controls:</p>
-                    <p>• Left-click + drag to rotate</p>
-                    <p>• Right-click + drag to pan</p>
-                    <p>• Scroll to zoom</p>
-                </div>
+                    <div class="dimension">
+                        <label for="width">Width <span aria-hidden="true">X</span></label>
+                        <input id="width" type="number" min="1" max="32" value="5" required />
+                        <input
+                            id="widthRange"
+                            type="range"
+                            min="1"
+                            max="32"
+                            value="5"
+                            aria-label="Adjust width"
+                        />
+                    </div>
 
-                <div id="stats" class="stats">
-                    <p>Voxels: <span id="voxelCount">0</span></p>
-                </div>
-            </div>
+                    <div class="dimension">
+                        <label for="height">Height <span aria-hidden="true">Y</span></label>
+                        <input id="height" type="number" min="1" max="32" value="5" required />
+                        <input
+                            id="heightRange"
+                            type="range"
+                            min="1"
+                            max="32"
+                            value="5"
+                            aria-label="Adjust height"
+                        />
+                    </div>
 
-            <!-- 3D Canvas -->
-            <div class="viewport">
+                    <div class="dimension">
+                        <label for="depth">Depth <span aria-hidden="true">Z</span></label>
+                        <input id="depth" type="number" min="1" max="32" value="5" required />
+                        <input
+                            id="depthRange"
+                            type="range"
+                            min="1"
+                            max="32"
+                            value="5"
+                            aria-label="Adjust depth"
+                        />
+                    </div>
+
+                    <p id="circle-note" class="field-note" hidden>
+                        Circle has a fixed height of 1 voxel.
+                    </p>
+                </fieldset>
+
+                <button class="generate" type="submit">Generate shape</button>
+
+                <details class="view-help">
+                    <summary>View controls</summary>
+                    <dl>
+                        <div>
+                            <dt>Orbit</dt>
+                            <dd>Drag, swipe, or use arrow keys</dd>
+                        </div>
+                        <div>
+                            <dt>Pan</dt>
+                            <dd>Right-drag or Shift + arrow keys</dd>
+                        </div>
+                        <div>
+                            <dt>Zoom</dt>
+                            <dd>Scroll or press + / −</dd>
+                        </div>
+                    </dl>
+                </details>
+            </form>
+
+            <section class="viewport" aria-label="Model viewport">
                 <div id="canvas-container" class="canvas-container"></div>
 
-                <!-- Loading indicator -->
-                <div id="loading" class="overlay hidden">
-                    <div class="overlay-content">
-                        <div class="spinner"></div>
-                        <p>Generating shape...</p>
+                <div class="view-toolbar" role="group" aria-label="Camera controls">
+                    <button id="zoom-out" type="button" class="zoom" aria-label="Zoom out">
+                        −
+                    </button>
+                    <button id="zoom-in" type="button" class="zoom" aria-label="Zoom in">+</button>
+                    <button id="fit-view" type="button">Fit view</button>
+                </div>
+
+                <div class="model-info" role="status" aria-atomic="true">
+                    <div class="model-title" id="model-name"></div>
+                    <div class="model-details">
+                        <span id="model-dimensions"></span>
+                        <span class="model-count"><span id="voxelCount">0</span> voxels</span>
                     </div>
                 </div>
 
-                <!-- Error message -->
-                <div id="errorMsg" class="error-toast hidden">Error message here</div>
-            </div>
-        </div>
-
-        <!--
-            Application logic is loaded as an ES module: the pure voxel
-            generators (src/voxel-generators.js), the self-contained raw-WebGL
-            renderer (src/renderer.js), and the DOM wiring (src/app.js). No
-            external scripts or CDNs are used.
-        -->
+                <p id="errorMsg" class="error-message" role="alert" hidden></p>
+            </section>
+        </main>
         <script type="module" src="src/app.js"></script>
     </body>
 </html>
